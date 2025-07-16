@@ -528,19 +528,31 @@ export class Game {
             // Calculate the up direction from planet center to rocket position
             const upDirection = rocketPosition.clone().sub(planetCenter).normalize();
             
-            // Create target orientation (rocket pointing away from planet center)
-            const targetPosition = rocketPosition.clone().add(upDirection.multiplyScalar(10));
+            // Create target quaternion for the desired orientation
+            const targetQuaternion = new THREE.Quaternion();
+            const targetMatrix = new THREE.Matrix4();
             
-            // Apply gradual orientation change
-            const currentForward = new THREE.Vector3(0, 1, 0).applyQuaternion(this.rocket.mesh.quaternion);
-            const desiredForward = upDirection.clone();
+            // Create a coordinate system where Y is up (away from planet)
+            const up = upDirection.clone();
+            const forward = new THREE.Vector3(0, 0, 1); // Default forward direction
+            const right = new THREE.Vector3().crossVectors(up, forward).normalize();
             
-            // Interpolate between current and desired orientation
-            const lerpFactor = 0.05; // Adjust this value to control orientation speed
-            const newForward = currentForward.clone().lerp(desiredForward, lerpFactor);
+            // If up and forward are parallel, choose a different forward
+            if (right.length() < 0.1) {
+                forward.set(1, 0, 0);
+                right.crossVectors(up, forward).normalize();
+            }
             
-            // Apply the new orientation
-            this.rocket.mesh.lookAt(rocketPosition.clone().add(newForward.multiplyScalar(10)));
+            // Recalculate forward to be perpendicular to both up and right
+            forward.crossVectors(right, up).normalize();
+            
+            // Create rotation matrix and extract quaternion
+            targetMatrix.makeBasis(right, up, forward);
+            targetQuaternion.setFromRotationMatrix(targetMatrix);
+            
+            // Smoothly interpolate between current and target orientation
+            const lerpFactor = 0.02; // Slower, smoother interpolation
+            this.rocket.mesh.quaternion.slerp(targetQuaternion, lerpFactor);
         }
     }
 

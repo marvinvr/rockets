@@ -435,11 +435,25 @@ export class Planet {
         const speed = rocket.getSpeed();
         
         if (altitude <= 0) {
-            if (speed < threshold) {
-                this.orientRocketOnSurface(rocket);
-                return 'success';
-            } else {
-                return 'crash';
+            // Check if rocket is moving towards or away from the planet
+            const planetCenter = this.mesh.position;
+            const rocketPosition = rocket.position;
+            const rocketVelocity = rocket.velocity;
+            
+            // Calculate direction from planet center to rocket position
+            const planetToRocket = rocketPosition.clone().sub(planetCenter).normalize();
+            
+            // Calculate the radial velocity (positive = moving away, negative = moving towards)
+            const radialVelocity = rocketVelocity.dot(planetToRocket);
+            
+            // Only check for landing/crash if rocket is moving towards the planet or moving very slowly
+            if (radialVelocity <= 1) { // 1 m/s threshold for "moving away"
+                if (speed < threshold) {
+                    this.orientRocketOnSurface(rocket);
+                    return 'success';
+                } else {
+                    return 'crash';
+                }
             }
         }
         
