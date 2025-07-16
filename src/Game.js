@@ -31,6 +31,9 @@ export class Game {
         this.planetaryProximityThreshold = 300; // Distance to switch to 3D mode
         
         this.cameraOffset = new THREE.Vector3(0, 10, 20);
+        this.cameraTarget = new THREE.Vector3();
+        this.cameraPosition = new THREE.Vector3();
+        this.cameraLerpSpeed = 0.1;
         
         this.setupMiniMap();
         this.init();
@@ -314,12 +317,16 @@ export class Game {
     }
 
     updateInitialCamera() {
-        // Simple camera setup to see the rocket and Earth
+        // Initialize camera position and target for smooth interpolation
         const rocketPos = this.rocket.mesh.position;
         
-        // Position camera behind and above the rocket
-        this.camera.position.set(rocketPos.x + 30, rocketPos.y + 20, rocketPos.z + 50);
-        this.camera.lookAt(rocketPos);
+        // Set initial camera position behind and above the rocket
+        this.cameraPosition.set(rocketPos.x + 30, rocketPos.y + 20, rocketPos.z + 50);
+        this.cameraTarget.copy(rocketPos);
+        
+        // Set camera to initial position
+        this.camera.position.copy(this.cameraPosition);
+        this.camera.lookAt(this.cameraTarget);
     }
 
     createAllPlanets() {
@@ -403,42 +410,64 @@ export class Game {
     }
 
     updateCamera() {
+        // Always use consistent up vector to prevent flipping
+        this.camera.up.set(0, 1, 0);
+        
+        // Calculate desired camera position and target
+        let desiredPosition = new THREE.Vector3();
+        let desiredTarget = this.rocket.position.clone();
+        
         if (this.viewMode === '2d') {
-            // 2D space view - camera positioned above looking down (the "2nd" perspective you liked)
+            // 2D space view - camera positioned above looking down
             const distance = 80 + Math.min(this.rocket.getSpeed() * 2, 40);
-            this.camera.position.set(this.rocket.position.x, this.rocket.position.y + distance, this.rocket.position.z);
-            this.camera.lookAt(this.rocket.position);
+            desiredPosition.set(
+                this.rocket.position.x,
+                this.rocket.position.y + distance,
+                this.rocket.position.z
+            );
         } else {
-            // 3D mode - use different camera positions based on game state
+            // 3D mode - calculate position based on game state
             let cameraOffset;
+            let useRocketRotation = true;
             
             switch (this.gameState) {
                 case 'launch':
-                    // Third-person trailing camera positioned behind and below the rocket
-                    cameraOffset = new THREE.Vector3(0, -8, 25);
+                    // For launch, use a fixed world-space offset to avoid disorientation
+                    cameraOffset = new THREE.Vector3(30, 20, 50);
+                    useRocketRotation = false; // Don't rotate with rocket during launch
                     break;
                     
                 case 'space':
                     // 3D space view - dynamic distance based on speed
                     const distance = 40 + Math.min(this.rocket.getSpeed() * 3, 60);
                     cameraOffset = new THREE.Vector3(0, 5, distance);
+                    useRocketRotation = true; // Follow rocket rotation in space
                     break;
                     
                 case 'landing':
                     // Close overhead view tilted forward for precision landing
                     cameraOffset = new THREE.Vector3(0, 15, 15);
+                    useRocketRotation = true; // Follow rocket rotation for landing
                     break;
             }
             
-            // Apply rocket's rotation to camera offset for proper third-person perspective
-            const rotatedOffset = cameraOffset.clone().applyQuaternion(this.rocket.mesh.quaternion);
-            
-            // Position camera relative to rocket
-            this.camera.position.copy(this.rocket.position).add(rotatedOffset);
-            
-            // Camera should look at the rocket itself, not ahead of it
-            this.camera.lookAt(this.rocket.position);
+            // Apply rotation only when appropriate
+            if (useRocketRotation) {
+                const rotatedOffset = cameraOffset.clone().applyQuaternion(this.rocket.mesh.quaternion);
+                desiredPosition.copy(this.rocket.position).add(rotatedOffset);
+            } else {
+                // Use world-space positioning for launch
+                desiredPosition.copy(this.rocket.position).add(cameraOffset);
+            }
         }
+        
+        // Smooth camera movement using interpolation
+        this.cameraPosition.lerp(desiredPosition, this.cameraLerpSpeed);
+        this.cameraTarget.lerp(desiredTarget, this.cameraLerpSpeed);
+        
+        // Apply smoothed position and look at target
+        this.camera.position.copy(this.cameraPosition);
+        this.camera.lookAt(this.cameraTarget);
     }
 
     updateLandingGearDeployment() {
@@ -606,23 +635,33 @@ export class Game {
     updateViewMode() {
         const earthAltitude = this.earth.getAltitude(this.rocket.position);
         let nearAnyPlanet = earthAltitude < this.planetaryProximityThreshold;
+        let closestAltitude = earthAltitude;
         
         // Check if we're close to any planet
         if (this.planets && !nearAnyPlanet) {
             this.planets.forEach(planet => {
                 const altitude = planet.getAltitude(this.rocket.position);
+                if (altitude < closestAltitude) {
+                    closestAltitude = altitude;
+                }
                 if (altitude < this.planetaryProximityThreshold) {
                     nearAnyPlanet = true;
                 }
             });
         }
         
-        // Simple logic: 3D when close to planets, 2D when far away
-        if (nearAnyPlanet) {
+        // Add hysteresis to prevent rapid switching
+        const switchThreshold = this.planetaryProximityThreshold;
+        const returnThreshold = this.planetaryProximityThreshold * 1.5; // 50% higher threshold for switching back
+        
+        if (this.viewMode === '2d' && closestAltitude < switchThreshold) {
             this.viewMode = '3d';
-        } else {
+        } else if (this.viewMode === '3d' && closestAltitude > returnThreshold) {
             this.viewMode = '2d';
         }
+        
+        // Adjust camera lerp speed based on mode transitions
+        this.cameraLerpSpeed = this.viewMode === '3d' ? 0.08 : 0.05;
     }
 
     onLandingSuccess(planet) {
@@ -744,11 +783,19 @@ export class Game {
     }
 
     start() {
+        this.lastTime = 0;
+        this.targetFPS = 60;
+        this.frameInterval = 1000 / this.targetFPS;
         this.animate();
     }
 
-    animate() {
-        requestAnimationFrame(() => this.animate());
-        this.update();
+    animate(currentTime = 0) {
+        requestAnimationFrame((time) => this.animate(time));
+        
+        // Cap to 60 FPS
+        if (currentTime - this.lastTime >= this.frameInterval) {
+            this.update();
+            this.lastTime = currentTime;
+        }
     }
 }
