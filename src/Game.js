@@ -426,9 +426,23 @@ export class Game {
                 this.rocket.position.z
             );
         } else {
-            // 3D mode - calculate position based on game state
+            // 3D mode - calculate position based on game state and proximity to planets
             let cameraOffset;
             let useRocketRotation = true;
+            
+            // Find closest planet for context-aware camera positioning
+            let closestPlanet = this.earth;
+            let closestDistance = this.earth.getAltitude(this.rocket.position);
+            
+            if (this.planets) {
+                this.planets.forEach(planet => {
+                    const altitude = planet.getAltitude(this.rocket.position);
+                    if (altitude < closestDistance) {
+                        closestDistance = altitude;
+                        closestPlanet = planet;
+                    }
+                });
+            }
             
             switch (this.gameState) {
                 case 'launch':
@@ -445,9 +459,33 @@ export class Game {
                     break;
                     
                 case 'landing':
-                    // Close overhead view tilted forward for precision landing
-                    cameraOffset = new THREE.Vector3(0, 15, 15);
-                    useRocketRotation = true; // Follow rocket rotation for landing
+                    // Enhanced landing camera - position to show both rocket and planet surface
+                    const planetDirection = closestPlanet.mesh.position.clone().sub(this.rocket.position).normalize();
+                    const rocketToPlanet = planetDirection.clone();
+                    
+                    // Adjust camera distance based on altitude for better framing
+                    const altitudeRatio = Math.min(closestDistance / 100, 1); // Normalize to 0-1 range
+                    const baseDistance = 30 + (altitudeRatio * 20); // 30-50 based on altitude
+                    const heightOffset = 20 + (altitudeRatio * 15); // 20-35 based on altitude
+                    const sideOffset = 15 + (altitudeRatio * 10); // 15-25 based on altitude
+                    
+                    // Create perpendicular vector to planet direction for side positioning
+                    const up = new THREE.Vector3(0, 1, 0);
+                    const sideDirection = new THREE.Vector3().crossVectors(rocketToPlanet, up).normalize();
+                    
+                    // Create a position that's behind and above the rocket, angled toward the planet
+                    const cameraWorldPos = this.rocket.position.clone()
+                        .add(rocketToPlanet.clone().multiplyScalar(-baseDistance)) // Behind rocket relative to planet
+                        .add(up.clone().multiplyScalar(heightOffset)) // Above rocket
+                        .add(sideDirection.multiplyScalar(sideOffset)); // To the side for better angle
+                    
+                    // Adjust target to be between rocket and planet for better framing
+                    const targetOffset = Math.min(closestDistance * 0.3, 20); // Closer target when closer to planet
+                    desiredTarget = this.rocket.position.clone()
+                        .add(rocketToPlanet.clone().multiplyScalar(targetOffset));
+                    
+                    desiredPosition.copy(cameraWorldPos);
+                    useRocketRotation = false; // Use world-space positioning for better view
                     break;
             }
             
@@ -455,8 +493,8 @@ export class Game {
             if (useRocketRotation) {
                 const rotatedOffset = cameraOffset.clone().applyQuaternion(this.rocket.mesh.quaternion);
                 desiredPosition.copy(this.rocket.position).add(rotatedOffset);
-            } else {
-                // Use world-space positioning for launch
+            } else if (this.gameState !== 'landing') {
+                // Use world-space positioning for launch (landing already handled above)
                 desiredPosition.copy(this.rocket.position).add(cameraOffset);
             }
         }
@@ -672,8 +710,12 @@ export class Game {
             this.viewMode = '2d';
         }
         
-        // Adjust camera lerp speed based on mode transitions
-        this.cameraLerpSpeed = this.viewMode === '3d' ? 0.08 : 0.05;
+        // Adjust camera lerp speed based on mode transitions and game state
+        if (this.gameState === 'landing') {
+            this.cameraLerpSpeed = 0.04; // Slower for precise landing camera
+        } else {
+            this.cameraLerpSpeed = this.viewMode === '3d' ? 0.08 : 0.05;
+        }
     }
 
     onLandingSuccess(planet) {
