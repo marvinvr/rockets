@@ -249,26 +249,3 @@ export function getAllCelestialBodies() {
     return [...SOLAR_SYSTEM.planets, ...SOLAR_SYSTEM.moons];
 }
 
-export function getTargetForLevel(level) {
-    const allBodies = getAllCelestialBodies();
-    const sortedByDifficulty = allBodies.sort((a, b) => a.difficulty - b.difficulty);
-    
-    if (level <= sortedByDifficulty.length) {
-        return sortedByDifficulty[level - 1];
-    }
-    
-    return {
-        name: `Distant World ${level}`,
-        radius: 40 + Math.random() * 60,
-        mass: 100 + Math.random() * 1000,
-        distanceFromSun: 8000 + level * 1000,
-        color: Math.floor(Math.random() * 0xffffff),
-        hasAtmosphere: Math.random() > 0.5,
-        rotationSpeed: Math.random() * 0.002,
-        orbitalSpeed: 0.0001 + Math.random() * 0.001,
-        gravity: 0.1 + Math.random() * 2,
-        description: `A mysterious world in the outer system`,
-        difficulty: level,
-        features: ['unknown_composition', 'extreme_distance']
-    };
-}

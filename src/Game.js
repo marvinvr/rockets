@@ -5,7 +5,7 @@ import { EdgeIndicators } from './utils/EdgeIndicators.js';
 import { Rocket } from './objects/Rocket.js';
 import { Planet } from './objects/Planet.js';
 import { AsteroidField } from './objects/Asteroid.js';
-import { getTargetForLevel, getPlanetByName, SOLAR_SYSTEM } from './data/SolarSystem.js';
+import { getPlanetByName, SOLAR_SYSTEM } from './data/SolarSystem.js';
 
 export class Game {
     constructor() {
@@ -24,7 +24,7 @@ export class Game {
         this.gameState = 'launch';
         this.score = 0;
         this.planetsVisited = 0;
-        this.currentLevel = 1;
+        this.visitedPlanets = new Set();
         
         // Add 2D/3D mode switching
         this.viewMode = '3d'; // '2d' or '3d'
@@ -131,25 +131,53 @@ export class Game {
             }
         });
         
-        // Highlight target planet
-        if (this.targetPlanet) {
-            const targetPos = this.targetPlanet.mesh.position;
-            const targetX = this.miniMapCenter.x + targetPos.x * this.miniMapScale;
-            const targetY = this.miniMapCenter.y + targetPos.z * this.miniMapScale;
-            
-            // Draw pulsing target indicator
-            const pulseSize = 6 + Math.sin(Date.now() * 0.005) * 2;
-            ctx.strokeStyle = '#ff4444';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(targetX, targetY, pulseSize, 0, 2 * Math.PI);
-            ctx.stroke();
-            
-            // Draw target label
-            ctx.fillStyle = '#ff4444';
-            ctx.font = '10px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('TARGET', targetX, targetY - 12);
+        // Draw all planets in the solar system
+        if (this.planets) {
+            this.planets.forEach(planet => {
+                const planetPos = planet.mesh.position;
+                const planetX = this.miniMapCenter.x + planetPos.x * this.miniMapScale;
+                const planetY = this.miniMapCenter.y + planetPos.z * this.miniMapScale;
+                
+                // Color based on planet
+                const colors = {
+                    'Mercury': '#8C7853',
+                    'Venus': '#FFC649',
+                    'Mars': '#cc4433',
+                    'Jupiter': '#D8CA9D',
+                    'Saturn': '#FAD5A5',
+                    'Uranus': '#4FD0E7',
+                    'Neptune': '#4169E1',
+                    'Moon': '#aaaaaa',
+                    'Phobos': '#8B4513',
+                    'Deimos': '#696969',
+                    'Europa': '#E6F3FF',
+                    'Io': '#FFFF80',
+                    'Titan': '#FFA500'
+                };
+                
+                ctx.fillStyle = colors[planet.name] || '#888888';
+                
+                // Size based on planet radius
+                const size = Math.max(2, planet.radius * 0.05);
+                ctx.beginPath();
+                ctx.arc(planetX, planetY, size, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Highlight visited planets
+                if (this.visitedPlanets.has(planet.name)) {
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(planetX, planetY, size + 2, 0, 2 * Math.PI);
+                    ctx.stroke();
+                }
+                
+                // Label planets
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '8px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(planet.name, planetX, planetY - size - 2);
+            });
         }
         
         // Draw rocket position and direction
@@ -274,7 +302,7 @@ export class Game {
         // Add Earth to edge indicators
         this.edgeIndicators.addPlanet(this.earth);
         
-        this.setupLevel(this.currentLevel);
+        this.createAllPlanets();
         
         // Initial camera setup
         this.updateInitialCamera();
@@ -294,97 +322,114 @@ export class Game {
         this.camera.lookAt(rocketPos);
     }
 
-    setupLevel(level) {
-        if (this.targetPlanet) {
-            this.scene.remove(this.targetPlanet.mesh);
-            if (this.targetPlanet.atmosphere) this.scene.remove(this.targetPlanet.atmosphere);
-            if (this.targetPlanet.rings) this.scene.remove(this.targetPlanet.rings);
-            if (this.targetPlanet.greatRedSpot) this.scene.remove(this.targetPlanet.greatRedSpot);
-            if (this.targetPlanet.iceSurface) this.scene.remove(this.targetPlanet.iceSurface);
-            this.edgeIndicators.removePlanet(this.targetPlanet.name);
-        }
+    createAllPlanets() {
+        this.planets = [];
         
-        if (this.asteroidField) {
-            this.asteroidField.asteroids.forEach(asteroid => asteroid.destroy());
-        }
-        
-        const targetData = getTargetForLevel(level);
-        
-        let position;
-        if (targetData.parentPlanet) {
-            const parentPlanet = getPlanetByName(targetData.parentPlanet);
-            const parentDistance = parentPlanet.distanceFromSun;
-            position = new THREE.Vector3(
-                parentDistance + targetData.distanceFromParent,
+        // Create all planets from the solar system data
+        SOLAR_SYSTEM.planets.forEach(planetData => {
+            if (planetData.name === 'Earth') return; // Earth is already created
+            
+            // Calculate orbital position
+            const angle = Math.random() * Math.PI * 2; // Random starting position
+            const distance = planetData.distanceFromSun;
+            const position = new THREE.Vector3(
+                Math.cos(angle) * distance,
                 0, // Lock Y position to 0 for 2D mode compatibility
-                parentDistance * 0.2
+                Math.sin(angle) * distance
             );
-        } else {
-            const distance = targetData.distanceFromSun || (1500 + level * 500);
-            position = new THREE.Vector3(
-                distance * (Math.random() - 0.5),
-                0, // Lock Y position to 0 for 2D mode compatibility
-                distance * (Math.random() - 0.5)
-            );
-        }
+            
+            const planetOptions = {
+                ...planetData,
+                position: position
+            };
+            
+            const planet = new Planet(this.scene, planetOptions);
+            this.planets.push(planet);
+            
+            // Add planet to edge indicators
+            this.edgeIndicators.addPlanet(planet);
+        });
         
-        const planetOptions = {
-            ...targetData,
-            position: position
-        };
+        // Create moons
+        SOLAR_SYSTEM.moons.forEach(moonData => {
+            const parentPlanet = this.planets.find(p => p.name === moonData.parentPlanet) || 
+                                 (moonData.parentPlanet === 'Earth' ? this.earth : null);
+            
+            if (parentPlanet) {
+                const moonAngle = Math.random() * Math.PI * 2;
+                const moonDistance = moonData.distanceFromParent;
+                const moonPosition = parentPlanet.mesh.position.clone().add(
+                    new THREE.Vector3(
+                        Math.cos(moonAngle) * moonDistance,
+                        0,
+                        Math.sin(moonAngle) * moonDistance
+                    )
+                );
+                
+                const moonOptions = {
+                    ...moonData,
+                    position: moonPosition
+                };
+                
+                const moon = new Planet(this.scene, moonOptions);
+                this.planets.push(moon);
+                this.edgeIndicators.addPlanet(moon);
+            }
+        });
         
-        if (level >= 3 && level <= 10) {
-            const asteroidDistance = position.clone().multiplyScalar(0.6);
-            // Also lock asteroid field to same Y level
-            asteroidDistance.y = 0;
-            this.asteroidField = new AsteroidField(
+        // Create asteroid belts
+        this.asteroidFields = [];
+        SOLAR_SYSTEM.asteroidBelts.forEach(beltData => {
+            const asteroidField = new AsteroidField(
                 this.scene,
-                asteroidDistance,
-                400,
-                20 + level * 3
+                new THREE.Vector3(0, 0, 0),
+                beltData.outerRadius - beltData.innerRadius,
+                beltData.asteroidCount
             );
-        }
-        
-        this.targetPlanet = new Planet(this.scene, planetOptions);
-        this.landingZone = this.targetPlanet.generateLandingZone();
-        
-        // Add planets to edge indicators (Earth is added here, target planet will be added in setupLevel)
-        this.edgeIndicators.addPlanet(this.targetPlanet);
+            
+            // Position asteroids in a belt
+            asteroidField.asteroids.forEach(asteroid => {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = beltData.innerRadius + Math.random() * (beltData.outerRadius - beltData.innerRadius);
+                asteroid.mesh.position.set(
+                    Math.cos(angle) * distance,
+                    0,
+                    Math.sin(angle) * distance
+                );
+            });
+            
+            this.asteroidFields.push(asteroidField);
+        });
     }
 
     updateCamera() {
-        let cameraOffset;
-        
-        switch (this.gameState) {
-            case 'launch':
-                // Third-person trailing camera positioned behind and below the rocket
-                // Since rocket points up (+Y), camera should be positioned back and down
-                cameraOffset = new THREE.Vector3(0, -8, 25);
-                break;
-                
-            case 'space':
-                if (this.viewMode === '2d') {
-                    // 2D space view - camera positioned above looking down
-                    const distance = 80 + Math.min(this.rocket.getSpeed() * 2, 40);
-                    cameraOffset = new THREE.Vector3(0, distance, 0);
-                } else {
+        if (this.viewMode === '2d') {
+            // 2D space view - camera positioned above looking down (the "2nd" perspective you liked)
+            const distance = 80 + Math.min(this.rocket.getSpeed() * 2, 40);
+            this.camera.position.set(this.rocket.position.x, this.rocket.position.y + distance, this.rocket.position.z);
+            this.camera.lookAt(this.rocket.position);
+        } else {
+            // 3D mode - use different camera positions based on game state
+            let cameraOffset;
+            
+            switch (this.gameState) {
+                case 'launch':
+                    // Third-person trailing camera positioned behind and below the rocket
+                    cameraOffset = new THREE.Vector3(0, -8, 25);
+                    break;
+                    
+                case 'space':
                     // 3D space view - dynamic distance based on speed
                     const distance = 40 + Math.min(this.rocket.getSpeed() * 3, 60);
                     cameraOffset = new THREE.Vector3(0, 5, distance);
-                }
-                break;
-                
-            case 'landing':
-                // Close overhead view tilted forward for precision landing
-                cameraOffset = new THREE.Vector3(0, 15, 15);
-                break;
-        }
-        
-        if (this.viewMode === '2d' && this.gameState === 'space') {
-            // In 2D mode, position camera directly above rocket
-            this.camera.position.set(this.rocket.position.x, this.rocket.position.y + cameraOffset.y, this.rocket.position.z);
-            this.camera.lookAt(this.rocket.position);
-        } else {
+                    break;
+                    
+                case 'landing':
+                    // Close overhead view tilted forward for precision landing
+                    cameraOffset = new THREE.Vector3(0, 15, 15);
+                    break;
+            }
+            
             // Apply rocket's rotation to camera offset for proper third-person perspective
             const rotatedOffset = cameraOffset.clone().applyQuaternion(this.rocket.mesh.quaternion);
             
@@ -397,12 +442,24 @@ export class Game {
     }
 
     updateLandingGearDeployment() {
-        const earthAltitude = this.earth.getAltitude(this.rocket.position);
-        const targetAltitude = this.targetPlanet.getAltitude(this.rocket.position);
-        
-        // Deploy landing gear when close to any planet (within 100 units altitude)
         const deploymentAltitude = 100;
-        const shouldDeploy = earthAltitude < deploymentAltitude || targetAltitude < deploymentAltitude;
+        let shouldDeploy = false;
+        
+        // Check Earth altitude
+        const earthAltitude = this.earth.getAltitude(this.rocket.position);
+        if (earthAltitude < deploymentAltitude) {
+            shouldDeploy = true;
+        }
+        
+        // Check all other planets
+        if (this.planets) {
+            this.planets.forEach(planet => {
+                const altitude = planet.getAltitude(this.rocket.position);
+                if (altitude < deploymentAltitude) {
+                    shouldDeploy = true;
+                }
+            });
+        }
         
         if (shouldDeploy) {
             this.rocket.deployLandingGear();
@@ -412,17 +469,26 @@ export class Game {
     }
 
     updateRocketOrientation() {
-        const earthAltitude = this.earth.getAltitude(this.rocket.position);
-        const targetAltitude = this.targetPlanet.getAltitude(this.rocket.position);
-        
-        // Auto-orient rocket when very close to planet surface (within 20 units altitude)
         const orientationAltitude = 20;
         let closestPlanet = null;
+        let closestDistance = Infinity;
         
-        if (earthAltitude < orientationAltitude && earthAltitude < targetAltitude) {
+        // Check Earth
+        const earthAltitude = this.earth.getAltitude(this.rocket.position);
+        if (earthAltitude < orientationAltitude && earthAltitude < closestDistance) {
             closestPlanet = this.earth;
-        } else if (targetAltitude < orientationAltitude) {
-            closestPlanet = this.targetPlanet;
+            closestDistance = earthAltitude;
+        }
+        
+        // Check all other planets
+        if (this.planets) {
+            this.planets.forEach(planet => {
+                const altitude = planet.getAltitude(this.rocket.position);
+                if (altitude < orientationAltitude && altitude < closestDistance) {
+                    closestPlanet = planet;
+                    closestDistance = altitude;
+                }
+            });
         }
         
         if (closestPlanet && this.rocket.getSpeed() < 15) {
@@ -456,19 +522,29 @@ export class Game {
         document.getElementById('fuelBar').style.width = this.rocket.getFuelPercentage() + '%';
         document.getElementById('velocity').textContent = Math.floor(this.rocket.getSpeed());
         
-        const altitude = Math.min(
-            this.earth.getAltitude(this.rocket.position),
-            this.targetPlanet.getAltitude(this.rocket.position)
-        );
-        document.getElementById('altitude').textContent = Math.floor(Math.max(0, altitude));
+        // Find the closest planet for altitude display
+        let closestAltitude = this.earth.getAltitude(this.rocket.position);
+        let closestPlanet = this.earth;
+        
+        if (this.planets) {
+            this.planets.forEach(planet => {
+                const altitude = planet.getAltitude(this.rocket.position);
+                if (altitude < closestAltitude) {
+                    closestAltitude = altitude;
+                    closestPlanet = planet;
+                }
+            });
+        }
+        
+        document.getElementById('altitude').textContent = Math.floor(Math.max(0, closestAltitude));
         
         const targetInfo = document.getElementById('targetInfo');
         if (targetInfo) {
             targetInfo.innerHTML = `
-                <strong>Target: ${this.targetPlanet.name}</strong><br>
-                ${this.targetPlanet.description}<br>
-                Gravity: ${this.targetPlanet.gravity}g<br>
-                Difficulty: ${this.targetPlanet.difficulty}/10<br>
+                <strong>Closest: ${closestPlanet.name}</strong><br>
+                ${closestPlanet.description}<br>
+                Gravity: ${closestPlanet.gravity}g<br>
+                Difficulty: ${closestPlanet.difficulty}/10<br>
                 <strong>View Mode: ${this.viewMode.toUpperCase()}</strong>
             `;
         }
@@ -476,24 +552,50 @@ export class Game {
 
     checkGameState() {
         const earthAltitude = this.earth.getAltitude(this.rocket.position);
-        const targetAltitude = this.targetPlanet.getAltitude(this.rocket.position);
         
         if (this.gameState === 'launch' && earthAltitude > 200) {
             this.gameState = 'space';
         }
         
-        if (this.gameState === 'space' && targetAltitude < 200) {
+        // Check if we're approaching any planet for landing
+        let closestPlanetAltitude = Infinity;
+        let closestPlanet = null;
+        
+        if (this.planets) {
+            this.planets.forEach(planet => {
+                const altitude = planet.getAltitude(this.rocket.position);
+                if (altitude < closestPlanetAltitude) {
+                    closestPlanetAltitude = altitude;
+                    closestPlanet = planet;
+                }
+            });
+        }
+        
+        if (this.gameState === 'space' && closestPlanetAltitude < 200) {
             this.gameState = 'landing';
         }
         
         // Update view mode based on proximity to planets
         this.updateViewMode();
         
-        const landingResult = this.targetPlanet.checkLanding(this.rocket);
-        if (landingResult === 'success') {
-            this.onLandingSuccess();
-        } else if (landingResult === 'crash') {
+        // Check landing on Earth
+        const earthLandingResult = this.earth.checkLanding(this.rocket);
+        if (earthLandingResult === 'success') {
+            this.onLandingSuccess(this.earth);
+        } else if (earthLandingResult === 'crash') {
             this.onGameOver('Crashed! Landing speed too high.');
+        }
+        
+        // Check landing on other planets
+        if (this.planets) {
+            this.planets.forEach(planet => {
+                const landingResult = planet.checkLanding(this.rocket);
+                if (landingResult === 'success') {
+                    this.onLandingSuccess(planet);
+                } else if (landingResult === 'crash') {
+                    this.onGameOver('Crashed! Landing speed too high.');
+                }
+            });
         }
         
         if (this.rocket.fuel <= 0 && this.rocket.getSpeed() < 0.1 && earthAltitude > 10) {
@@ -503,31 +605,39 @@ export class Game {
 
     updateViewMode() {
         const earthAltitude = this.earth.getAltitude(this.rocket.position);
-        const targetAltitude = this.targetPlanet.getAltitude(this.rocket.position);
+        let nearAnyPlanet = earthAltitude < this.planetaryProximityThreshold;
         
         // Check if we're close to any planet
-        const nearEarth = earthAltitude < this.planetaryProximityThreshold;
-        const nearTargetPlanet = targetAltitude < this.planetaryProximityThreshold;
+        if (this.planets && !nearAnyPlanet) {
+            this.planets.forEach(planet => {
+                const altitude = planet.getAltitude(this.rocket.position);
+                if (altitude < this.planetaryProximityThreshold) {
+                    nearAnyPlanet = true;
+                }
+            });
+        }
         
-        if (nearEarth || nearTargetPlanet) {
+        // Simple logic: 3D when close to planets, 2D when far away
+        if (nearAnyPlanet) {
             this.viewMode = '3d';
-        } else if (this.gameState === 'space') {
+        } else {
             this.viewMode = '2d';
         }
     }
 
-    onLandingSuccess() {
-        this.planetsVisited++;
-        this.score += 1000 * this.currentLevel;
-        this.score += this.rocket.fuel * 10;
-        
-        setTimeout(() => {
-            this.currentLevel++;
-            this.rocket.reset();
-            this.positionRocketOnEurope();
-            this.setupLevel(this.currentLevel);
-            this.gameState = 'launch';
-        }, 3000);
+    onLandingSuccess(planet) {
+        if (!this.visitedPlanets.has(planet.name)) {
+            this.planetsVisited++;
+            this.visitedPlanets.add(planet.name);
+            this.score += 1000 * planet.difficulty;
+            this.score += this.rocket.fuel * 10;
+            
+            setTimeout(() => {
+                this.rocket.reset();
+                this.positionRocketOnEurope();
+                this.gameState = 'launch';
+            }, 3000);
+        }
     }
 
     onGameOver(message) {
@@ -565,19 +675,38 @@ export class Game {
             }
         }
         
-        const earthGravity = this.physics.applyGravity(this.rocket, this.earth);
-        const targetGravity = this.physics.applyGravity(this.rocket, this.targetPlanet);
-        const totalGravity = earthGravity.add(targetGravity);
+        // Apply gravity from all planets
+        let totalGravity = this.physics.applyGravity(this.rocket, this.earth);
+        
+        if (this.planets) {
+            this.planets.forEach(planet => {
+                const gravity = this.physics.applyGravity(this.rocket, planet);
+                totalGravity.add(gravity);
+            });
+        }
         
         // Check if rocket is near any planet (within atmospheric range)
         const earthAltitude = this.earth.getAltitude(this.rocket.position);
-        const targetAltitude = this.targetPlanet.getAltitude(this.rocket.position);
         const atmosphericRange = 300; // Distance where atmospheric drag applies
-        const nearPlanet = earthAltitude < atmosphericRange || targetAltitude < atmosphericRange;
+        let nearPlanet = earthAltitude < atmosphericRange;
+        
+        if (this.planets && !nearPlanet) {
+            this.planets.forEach(planet => {
+                const altitude = planet.getAltitude(this.rocket.position);
+                if (altitude < atmosphericRange) {
+                    nearPlanet = true;
+                }
+            });
+        }
         
         this.rocket.update(deltaTime, totalGravity, nearPlanet, this.viewMode);
         this.earth.update(deltaTime);
-        this.targetPlanet.update(deltaTime);
+        
+        if (this.planets) {
+            this.planets.forEach(planet => {
+                planet.update(deltaTime);
+            });
+        }
         
         // Automatic landing gear deployment based on proximity to planets
         this.updateLandingGearDeployment();
@@ -585,18 +714,24 @@ export class Game {
         // Auto-orient rocket when close to planet surface
         this.updateRocketOrientation();
         
-        if (this.asteroidField) {
-            this.asteroidField.update(deltaTime);
-            const collision = this.asteroidField.checkCollisions(this.rocket, 5);
-            if (collision) {
-                this.onGameOver('Collision with asteroid!');
-            }
+        if (this.asteroidFields) {
+            this.asteroidFields.forEach(asteroidField => {
+                asteroidField.update(deltaTime);
+                const collision = asteroidField.checkCollisions(this.rocket, 5);
+                if (collision) {
+                    this.onGameOver('Collision with asteroid!');
+                }
+            });
         }
         
         this.updateCamera();
         this.updateHUD();
         this.updateMiniMap();
-        this.edgeIndicators.update(this.camera, [this.earth, this.targetPlanet]);
+        
+        // Update edge indicators with all planets
+        const allPlanets = [this.earth, ...(this.planets || [])];
+        this.edgeIndicators.update(this.camera, allPlanets);
+        
         this.checkGameState();
         
         this.renderer.render(this.scene, this.camera);
