@@ -24,7 +24,7 @@ export class PlanetScene {
         this.cameraLerpSpeed = 0.12; // More responsive camera
         
         // Scene transition parameters
-        this.exitThreshold = 200; // Distance from planet surface to exit scene
+        this.exitThreshold = 1600; // Distance from planet surface to exit scene (8x larger for bigger planets)
         
         this.gameState = 'approaching'; // 'approaching', 'landing', 'landed', 'launching'
         
@@ -95,10 +95,11 @@ export class PlanetScene {
     }
     
     createPlanet() {
-        // Create planet at origin for this scene
+        // Create planet at origin for this scene with much larger radius for takeoff feel
         this.planet = new Planet(this.scene, {
             ...this.planetData,
-            position: new THREE.Vector3(0, 0, 0)
+            position: new THREE.Vector3(0, 0, 0),
+            radius: this.planetData.radius * 8 // Make planets 8x larger for better takeoff experience
         });
         
         // Add planet to edge indicators so we can see arrow when off-screen
@@ -162,12 +163,12 @@ export class PlanetScene {
         
         // Use consistent camera angle (45 degrees offset from approach angle)
         const cameraAngle = Math.PI * 0.75; // 135 degrees - gives cinematic side view
-        const framingDistance = Math.max(distanceToCenter * 0.8, 150);
-        const cameraHeight = Math.max(distanceToCenter * 0.6, 100);
+        const framingDistance = Math.max(distanceToCenter * 0.8, 1200); // Increased for larger planets
+        const cameraHeight = Math.max(distanceToCenter * 0.6, 800); // Increased for larger planets
         
         // Adjust camera based on game state and altitude
-        if (this.gameState === 'landed' || altitude < 20) {
-            // Ground/landing view - close-up cinematic angle
+        if (this.gameState === 'landed' || altitude < 160) { // Increased from 20 to 160 for larger planets
+            // Ground/landing view - close-up focus on rocket
             const upDirection = rocketPos.clone().sub(planetPos).normalize();
             const sideDirection = new THREE.Vector3(
                 Math.cos(cameraAngle),
@@ -175,15 +176,15 @@ export class PlanetScene {
                 Math.sin(cameraAngle)
             ).normalize();
             
-            // Position camera close to rocket for ground operations
+            // Position camera much closer to rocket for intimate ground view
             const desiredPosition = rocketPos.clone()
-                .add(sideDirection.multiplyScalar(50))
-                .add(upDirection.multiplyScalar(30))
-                .add(sideDirection.clone().multiplyScalar(-10)); // Slightly back
+                .add(sideDirection.multiplyScalar(80))  // Reduced from 400 to 80 - much closer
+                .add(upDirection.multiplyScalar(40))    // Reduced from 240 to 40 - lower angle
+                .add(sideDirection.clone().multiplyScalar(-20)); // Reduced from -80 to -20
                 
             this.cameraPosition.lerp(desiredPosition, this.cameraLerpSpeed);
             this.cameraTarget.lerp(rocketPos, this.cameraLerpSpeed);
-        } else if (altitude < 100) {
+        } else if (altitude < 800) { // Increased from 100 to 800 for larger planets
             // Close to planet - focus more on landing area with consistent angle
             const planetDirection = planetPos.clone().sub(rocketPos).normalize();
             const upDirection = rocketPos.clone().sub(planetPos).normalize();
@@ -195,11 +196,11 @@ export class PlanetScene {
                 Math.sin(cameraAngle)
             ).normalize();
             
-            // Position camera to show both rocket and landing area
+            // Position camera to show both rocket and landing area (scaled up)
             const desiredPosition = midpoint.clone()
-                .add(sideDirection.multiplyScalar(120))
-                .add(upDirection.multiplyScalar(80))
-                .add(planetDirection.multiplyScalar(-40));
+                .add(sideDirection.multiplyScalar(960))  // Increased from 120 to 960
+                .add(upDirection.multiplyScalar(640))    // Increased from 80 to 640
+                .add(planetDirection.multiplyScalar(-320)); // Increased from -40 to -320
                 
             this.cameraPosition.lerp(desiredPosition, this.cameraLerpSpeed);
             this.cameraTarget.lerp(midpoint, this.cameraLerpSpeed);
@@ -232,13 +233,13 @@ export class PlanetScene {
         const altitude = this.planet.getAltitude(this.rocket.mesh.position);
         const speed = this.rocket.getSpeed();
         
-        if (this.gameState === 'approaching' && altitude < 100) {
+        if (this.gameState === 'approaching' && altitude < 800) { // Increased from 100 to 800
             this.gameState = 'landing';
-        } else if (this.gameState === 'landing' && speed < 1 && altitude < 5) {
+        } else if (this.gameState === 'landing' && speed < 1 && altitude < 40) { // Increased from 5 to 40
             this.gameState = 'landed';
         } else if (this.gameState === 'landed' && speed > 5) {
             this.gameState = 'launching';
-        } else if (this.gameState === 'launching' && altitude > 100) {
+        } else if (this.gameState === 'launching' && altitude > 800) { // Increased from 100 to 800
             this.gameState = 'approaching';
         }
     }
@@ -247,8 +248,8 @@ export class PlanetScene {
         const altitude = this.planet.getAltitude(this.rocket.mesh.position);
         const speed = this.rocket.getSpeed();
         
-        // Auto-orient rocket when close to surface and moving slowly
-        if (altitude < 30 && speed < 10) {
+        // Auto-orient rocket when close to surface and moving slowly (scaled for larger planets)
+        if (altitude < 240 && speed < 10) { // Increased from 30 to 240
             const planetCenter = this.planet.mesh.position;
             const rocketPosition = this.rocket.mesh.position;
             
@@ -280,7 +281,7 @@ export class PlanetScene {
     updateLandingGear() {
         const altitude = this.planet.getAltitude(this.rocket.mesh.position);
         
-        if (altitude < 100) {
+        if (altitude < 800) { // Increased from 100 to 800 for larger planets
             this.rocket.deployLandingGear();
         } else {
             this.rocket.retractLandingGear();
@@ -332,9 +333,9 @@ export class PlanetScene {
         // Apply gravity
         const gravity = this.physics.applyGravity(this.rocket, this.planet);
         
-        // Update rocket with atmospheric effects
+        // Update rocket with atmospheric effects (scaled for larger planets)
         const altitude = this.planet.getAltitude(this.rocket.mesh.position);
-        const nearPlanet = altitude < 300;
+        const nearPlanet = altitude < 2400; // Increased from 300 to 2400 for larger planets
         
         this.rocket.update(deltaTime, gravity, nearPlanet, '3d');
         this.planet.update(deltaTime);
@@ -357,8 +358,8 @@ export class PlanetScene {
         // Check for landing
         this.checkLanding();
         
-        // Check for fuel depletion
-        if (this.rocket.fuel <= 0 && this.rocket.getSpeed() < 0.1 && altitude > 10) {
+        // Check for fuel depletion (scaled for larger planets)
+        if (this.rocket.fuel <= 0 && this.rocket.getSpeed() < 0.1 && altitude > 80) { // Increased from 10 to 80
             this.onGameOver('Out of fuel!');
         }
     }
