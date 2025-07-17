@@ -424,24 +424,46 @@ export class SolarSystemScene {
     }
     
     update(deltaTime) {
-        // Handle input - simplified arcade-style movement
+        // Handle input - instant directional movement
         const movement = this.inputHandler.getMovementInput();
         
-        // Direct movement without complex physics
-        const moveSpeed = 80; // Fast movement speed
+        const moveSpeed = 80; // Movement speed
         const moveDirection = new THREE.Vector3();
+        let isMoving = false;
         
-        if (movement.forward) moveDirection.z -= 1;
-        if (movement.backward) moveDirection.z += 1;
-        if (movement.left) moveDirection.x -= 1;
-        if (movement.right) moveDirection.x += 1;
-        if (movement.boost) {
+        // Instant rotation and movement based on input
+        if (movement.forward) {
+            // W: Face up and move up (ship nose points up on screen)
+            this.rocket.mesh.rotation.y = -Math.PI / 2;
+            moveDirection.z = -1;
+            isMoving = true;
+        }
+        if (movement.backward) {
+            // S: Face down and move down (ship nose points down on screen)
+            this.rocket.mesh.rotation.y = Math.PI / 2;
+            moveDirection.z = 1;
+            isMoving = true;
+        }
+        if (movement.left) {
+            // A: Face left and move left (ship nose points left on screen)
+            this.rocket.mesh.rotation.y = Math.PI;
+            moveDirection.x = -1;
+            isMoving = true;
+        }
+        if (movement.right) {
+            // D: Face right and move right (ship nose points right on screen)
+            this.rocket.mesh.rotation.y = 0;
+            moveDirection.x = 1;
+            isMoving = true;
+        }
+        
+        if (movement.boost && isMoving) {
             // Boost gives extra speed
             moveDirection.multiplyScalar(1.5);
         }
         
-        // Apply movement directly to position (no acceleration/velocity)
-        if (moveDirection.length() > 0) {
+        // Apply movement directly
+        if (isMoving) {
             moveDirection.normalize();
             this.rocket.mesh.position.add(moveDirection.multiplyScalar(moveSpeed * deltaTime));
             
