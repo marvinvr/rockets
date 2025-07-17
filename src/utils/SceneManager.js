@@ -51,6 +51,9 @@ export class SceneManager {
         this.clearEdgeIndicators();
         this.showEdgeIndicators();
         
+        // Show mini-map for solar system scene
+        this.showMiniMap();
+        
         // Reinitialize edge indicators for solar system
         if (this.solarSystemScene) {
             this.solarSystemScene.reinitializeEdgeIndicators();
@@ -75,6 +78,22 @@ export class SceneManager {
         }
     }
     
+    hideMiniMap() {
+        // Hide mini-map
+        const miniMap = document.getElementById('miniMap');
+        if (miniMap) {
+            miniMap.style.display = 'none';
+        }
+    }
+    
+    showMiniMap() {
+        // Show mini-map
+        const miniMap = document.getElementById('miniMap');
+        if (miniMap) {
+            miniMap.style.display = 'block';
+        }
+    }
+    
     clearEdgeIndicators() {
         // Clear all edge indicators from the container
         const indicatorsContainer = document.getElementById('edgeIndicators');
@@ -94,6 +113,9 @@ export class SceneManager {
         // Clear existing edge indicators and keep them visible for planet scene
         this.clearEdgeIndicators();
         this.showEdgeIndicators();
+        
+        // Hide mini-map for planet scene
+        this.hideMiniMap();
         
         // Create new planet scene with planet data
         const planetData = {

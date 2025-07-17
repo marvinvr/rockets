@@ -28,7 +28,7 @@ export class PlanetScene {
         this.cameraTarget.set(0, 0, 0);
         
         // Scene transition parameters
-        this.exitThreshold = 1600; // Distance from planet surface to exit scene (8x larger for bigger planets)
+        this.exitThreshold = 1120; // Distance from planet surface to exit scene (30% smaller for quicker escape)
         
         this.gameState = 'approaching'; // 'approaching', 'landing', 'landed', 'launching'
         
@@ -199,56 +199,33 @@ export class PlanetScene {
         const framingDistance = Math.max(distanceToCenter * 0.8, 600); // Reduced for better visibility
         const cameraHeight = Math.max(distanceToCenter * 0.6, 400); // Reduced for better visibility
         
-        // Adjust camera based on game state and altitude
-        if (this.gameState === 'landed' || altitude < 160) { // Increased from 20 to 160 for larger planets
-            // Ground/landing view - close-up focus on rocket
-            const upDirection = rocketPos.clone().sub(planetPos).normalize();
-            const sideDirection = new THREE.Vector3(
-                Math.cos(cameraAngle),
-                0,
-                Math.sin(cameraAngle)
-            ).normalize();
+        // Calculate dynamic camera distance based on altitude
+        // Start very close on surface, scale up very minimally for 3-4x bigger planet appearance
+        const baseDistance = 15; // Very close when on surface
+        const maxDistance = 50; // Much smaller maximum distance - only 3x further than start
+        const altitudeScaling = Math.min(altitude / 1120, 1); // Normalize against exit threshold
+        const dynamicDistance = baseDistance + (maxDistance - baseDistance) * altitudeScaling;
+        
+        // Simple unified camera positioning - no complex angle switching
+        const upDirection = rocketPos.clone().sub(planetPos).normalize();
+        const sideDirection = new THREE.Vector3(
+            Math.cos(cameraAngle),
+            0,
+            Math.sin(cameraAngle)
+        ).normalize();
+        
+        // Use dynamic distance for all altitudes - smaller minimum distances for closer camera
+        const sideDistance = Math.max(dynamicDistance * 0.8, 10); // Minimum 10 units (closer)
+        const heightDistance = Math.max(dynamicDistance * 0.5, 8); // Minimum 8 units (closer)
+        const backDistance = Math.max(dynamicDistance * 0.3, 3); // Minimum 3 units (closer)
+        
+        const desiredPosition = rocketPos.clone()
+            .add(sideDirection.multiplyScalar(sideDistance))
+            .add(upDirection.multiplyScalar(heightDistance))
+            .add(sideDirection.clone().multiplyScalar(-backDistance));
             
-            // Position camera much closer to rocket for intimate ground view
-            const desiredPosition = rocketPos.clone()
-                .add(sideDirection.multiplyScalar(80))  // Reduced from 400 to 80 - much closer
-                .add(upDirection.multiplyScalar(40))    // Reduced from 240 to 40 - lower angle
-                .add(sideDirection.clone().multiplyScalar(-20)); // Reduced from -80 to -20
-                
-            this.cameraPosition.lerp(desiredPosition, this.cameraLerpSpeed);
-            this.cameraTarget.lerp(rocketPos, this.cameraLerpSpeed);
-        } else if (altitude < 800) { // Increased from 100 to 800 for larger planets
-            // Close to planet - focus more on landing area with consistent angle
-            const planetDirection = planetPos.clone().sub(rocketPos).normalize();
-            const upDirection = rocketPos.clone().sub(planetPos).normalize();
-            
-            // Maintain consistent side angle for landing shots
-            const sideDirection = new THREE.Vector3(
-                Math.cos(cameraAngle),
-                0,
-                Math.sin(cameraAngle)
-            ).normalize();
-            
-            // Position camera to show both rocket and landing area (scaled up)
-            const desiredPosition = midpoint.clone()
-                .add(sideDirection.multiplyScalar(960))  // Increased from 120 to 960
-                .add(upDirection.multiplyScalar(640))    // Increased from 80 to 640
-                .add(planetDirection.multiplyScalar(-320)); // Increased from -40 to -320
-                
-            this.cameraPosition.lerp(desiredPosition, this.cameraLerpSpeed);
-            this.cameraTarget.lerp(midpoint, this.cameraLerpSpeed);
-        } else {
-            // Higher altitude - consistent cinematic approach angle
-            const cameraOffset = new THREE.Vector3(
-                Math.cos(cameraAngle) * framingDistance * 0.7,
-                cameraHeight,
-                Math.sin(cameraAngle) * framingDistance * 0.7
-            );
-            
-            const desiredPosition = midpoint.clone().add(cameraOffset);
-            this.cameraPosition.lerp(desiredPosition, this.cameraLerpSpeed);
-            this.cameraTarget.lerp(midpoint, this.cameraLerpSpeed);
-        }
+        this.cameraPosition.lerp(desiredPosition, this.cameraLerpSpeed);
+        this.cameraTarget.lerp(rocketPos, this.cameraLerpSpeed);
         
         this.camera.position.copy(this.cameraPosition);
         this.camera.lookAt(this.cameraTarget);
