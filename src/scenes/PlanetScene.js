@@ -23,6 +23,10 @@ export class PlanetScene {
         this.cameraPosition = new THREE.Vector3();
         this.cameraLerpSpeed = 0.12; // More responsive camera
         
+        // Initialize camera position to prevent null values
+        this.cameraPosition.set(0, 500, 1000);
+        this.cameraTarget.set(0, 0, 0);
+        
         // Scene transition parameters
         this.exitThreshold = 1600; // Distance from planet surface to exit scene (8x larger for bigger planets)
         
@@ -116,28 +120,53 @@ export class PlanetScene {
         this.rocket.fuel = solarSystemRocket.fuel;
         this.rocket.velocity.copy(solarSystemRocket.velocity);
         
-        // Position rocket on the planet surface at a consistent angle
-        const landingAngle = Math.PI * 0.25; // Fixed 45-degree landing position
-        const surfaceDistance = this.planet.radius + 2; // Just above surface
+        // Check if this is Earth (starting planet) - land on surface
+        if (this.planet.name === 'Earth') {
+            // Position rocket on Earth's surface at a consistent angle
+            const landingAngle = Math.PI * 0.25; // Fixed 45-degree landing position
+            const surfaceDistance = this.planet.radius + 2; // Just above surface
+            
+            this.rocket.mesh.position.set(
+                Math.cos(landingAngle) * surfaceDistance,
+                0, // On the surface
+                Math.sin(landingAngle) * surfaceDistance
+            );
+            
+            // Clear any velocity from solar system navigation
+            this.rocket.velocity.set(0, 0, 0);
+            
+            // Orient rocket upward from planet surface
+            this.planet.orientRocketOnSurface(this.rocket);
+            
+            // Deploy landing gear since we're on the surface
+            this.rocket.deployLandingGear();
+            
+            console.log(`Rocket landed on ${this.planet.name} surface at altitude ${this.planet.getAltitude(this.rocket.mesh.position)}`);
+            
+            this.gameState = 'landed';
+        } else {
+            // Position rocket for approach to other planets
+            const rocketAngle = Math.PI * 0.25;  // 45 degrees for better visibility
+            const approachDistance = this.planet.radius + 800; // Much closer - within view range
+            
+            this.rocket.mesh.position.set(
+                Math.cos(rocketAngle) * approachDistance,
+                200, // Reasonable altitude
+                Math.sin(rocketAngle) * approachDistance
+            );
+            
+            // Clear any velocity from solar system navigation
+            this.rocket.velocity.set(0, 0, 0);
+            
+            // Orient rocket toward planet for approach
+            const planetDirection = this.planet.mesh.position.clone().sub(this.rocket.mesh.position).normalize();
+            this.rocket.mesh.lookAt(this.planet.mesh.position);
+            
+            console.log(`Rocket approaching ${this.planet.name} at altitude ${this.planet.getAltitude(this.rocket.mesh.position)}`);
+            
+            this.gameState = 'approaching';
+        }
         
-        this.rocket.mesh.position.set(
-            Math.cos(landingAngle) * surfaceDistance,
-            0, // On the surface
-            Math.sin(landingAngle) * surfaceDistance
-        );
-        
-        // Clear any velocity from solar system navigation
-        this.rocket.velocity.set(0, 0, 0);
-        
-        // Orient rocket upward from planet surface
-        this.planet.orientRocketOnSurface(this.rocket);
-        
-        // Deploy landing gear since we're on the surface
-        this.rocket.deployLandingGear();
-        
-        console.log(`Rocket landed on ${this.planet.name} surface at altitude ${this.planet.getAltitude(this.rocket.mesh.position)}`);
-        
-        this.gameState = 'landed';
         this.updateCamera();
     }
     
@@ -150,6 +179,10 @@ export class PlanetScene {
     }
     
     updateCamera() {
+        if (!this.rocket || !this.rocket.mesh || !this.planet) {
+            return; // Skip if rocket or planet not ready
+        }
+        
         const rocketPos = this.rocket.mesh.position;
         const planetPos = this.planet.mesh.position;
         const altitude = this.planet.getAltitude(rocketPos);
@@ -163,8 +196,8 @@ export class PlanetScene {
         
         // Use consistent camera angle (45 degrees offset from approach angle)
         const cameraAngle = Math.PI * 0.75; // 135 degrees - gives cinematic side view
-        const framingDistance = Math.max(distanceToCenter * 0.8, 1200); // Increased for larger planets
-        const cameraHeight = Math.max(distanceToCenter * 0.6, 800); // Increased for larger planets
+        const framingDistance = Math.max(distanceToCenter * 0.8, 600); // Reduced for better visibility
+        const cameraHeight = Math.max(distanceToCenter * 0.6, 400); // Reduced for better visibility
         
         // Adjust camera based on game state and altitude
         if (this.gameState === 'landed' || altitude < 160) { // Increased from 20 to 160 for larger planets
