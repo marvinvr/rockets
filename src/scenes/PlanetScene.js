@@ -124,7 +124,7 @@ export class PlanetScene {
         if (this.planet.name === 'Earth') {
             // Position rocket on Earth's surface at a consistent angle
             const landingAngle = Math.PI * 0.25; // Fixed 45-degree landing position
-            const surfaceDistance = this.planet.radius + 2; // Just above surface
+            const surfaceDistance = this.planet.radius + 5; // Match the orientRocketOnSurface positioning
             
             this.rocket.mesh.position.set(
                 Math.cos(landingAngle) * surfaceDistance,
@@ -243,13 +243,13 @@ export class PlanetScene {
         const altitude = this.planet.getAltitude(this.rocket.mesh.position);
         const speed = this.rocket.getSpeed();
         
-        if (this.gameState === 'approaching' && altitude < 800) { // Increased from 100 to 800
+        if (this.gameState === 'approaching' && altitude < 200) { // More reasonable transition altitude
             this.gameState = 'landing';
-        } else if (this.gameState === 'landing' && speed < 1 && altitude < 40) { // Increased from 5 to 40
+        } else if (this.gameState === 'landing' && speed < 1 && altitude < 10) { // Much closer to surface for landed state
             this.gameState = 'landed';
         } else if (this.gameState === 'landed' && speed > 5) {
             this.gameState = 'launching';
-        } else if (this.gameState === 'launching' && altitude > 800) { // Increased from 100 to 800
+        } else if (this.gameState === 'launching' && altitude > 200) { // Match approaching threshold
             this.gameState = 'approaching';
         }
     }
@@ -259,7 +259,7 @@ export class PlanetScene {
         const speed = this.rocket.getSpeed();
         
         // Auto-orient rocket when close to surface and moving slowly (scaled for larger planets)
-        if (altitude < 240 && speed < 10) { // Increased from 30 to 240
+        if (altitude < 30 && speed < 10) { // Much closer to surface to prevent early snapping
             const planetCenter = this.planet.mesh.position;
             const rocketPosition = this.rocket.mesh.position;
             
@@ -291,7 +291,7 @@ export class PlanetScene {
     updateLandingGear() {
         const altitude = this.planet.getAltitude(this.rocket.mesh.position);
         
-        if (altitude < 800) { // Increased from 100 to 800 for larger planets
+        if (altitude < 100) { // Deploy gear when much closer to surface
             this.rocket.deployLandingGear();
         } else {
             this.rocket.retractLandingGear();
@@ -336,7 +336,7 @@ export class PlanetScene {
         }
         
         // Apply altitude-based atmospheric drag effect
-        if (altitude < 2400) { // Within atmosphere
+        if (altitude < 300) { // Within atmosphere - more reasonable range
             const atmosphericDrag = this.calculateAtmosphericDrag(altitude);
             const dragForce = this.rocket.velocity.clone().multiplyScalar(-atmosphericDrag);
             baseGravity.add(dragForce);
@@ -349,7 +349,7 @@ export class PlanetScene {
     calculateAtmosphericDrag(altitude) {
         // Atmospheric drag becomes stronger as altitude decreases
         const maxDrag = 0.15; // Maximum drag coefficient
-        const atmosphereHeight = 2400; // Height where atmosphere ends
+        const atmosphereHeight = 300; // Height where atmosphere ends - adjusted for scale
         
         if (altitude >= atmosphereHeight) {
             return 0; // No drag in space
@@ -407,7 +407,7 @@ export class PlanetScene {
         
         // Update rocket with atmospheric effects (scaled for larger planets)
         const altitude = this.planet.getAltitude(this.rocket.mesh.position);
-        const nearPlanet = altitude < 2400; // Increased from 300 to 2400 for larger planets
+        const nearPlanet = altitude < 300; // Atmospheric effects range
         
         this.rocket.update(deltaTime, gravity, nearPlanet, '3d');
         this.planet.update(deltaTime);
@@ -430,8 +430,8 @@ export class PlanetScene {
         // Check for landing
         this.checkLanding();
         
-        // Check for fuel depletion (scaled for larger planets)
-        if (this.rocket.fuel <= 0 && this.rocket.getSpeed() < 0.1 && altitude > 80) { // Increased from 10 to 80
+        // Check for fuel depletion
+        if (this.rocket.fuel <= 0 && this.rocket.getSpeed() < 0.1 && altitude > 10) { // Only game over if stranded above surface
             this.onGameOver('Out of fuel!');
         }
     }
