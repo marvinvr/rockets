@@ -311,39 +311,64 @@ export class PlanetScene {
         const distance = rocketPos.distanceTo(planetPos);
         
         // Enhanced gravity parameters for planet scene
-        const enhancedGravityRange = this.planet.radius * 6; // 6x planet radius influence
-        const strongGravityRange = this.planet.radius * 2; // 2x planet radius for strong gravity
+        const enhancedGravityRange = this.planet.radius * 15; // Much wider range
         
         // Skip gravity if too far away
         if (distance > enhancedGravityRange) {
             return new THREE.Vector3(0, 0, 0);
         }
         
-        // Calculate base gravity using physics system
-        const baseGravity = this.physics.applyGravity(this.rocket, this.planet);
+        // Calculate realistic gravity based on inverse square law
+        // Using a more realistic gravitational constant for better feel
+        const G = 2000; // Middle ground - should be noticeable but not overwhelming
+        const planetMass = this.planet.mass || 100; // Default mass if not set
         
-        // Apply distance-based scaling for enhanced close-range gravity
-        let gravityMultiplier = 1.0;
+        // Use original planet mass - no scaling needed
+        const scaledPlanetMass = planetMass;
         
-        if (distance < strongGravityRange) {
-            // Very strong gravity when close to planet surface
-            const proximityFactor = (strongGravityRange - distance) / strongGravityRange;
-            gravityMultiplier = 1.0 + (proximityFactor * 2.5); // Up to 3.5x stronger when very close
-        } else if (distance < enhancedGravityRange) {
-            // Moderate gravity enhancement at medium range
-            const rangeFactor = (enhancedGravityRange - distance) / (enhancedGravityRange - strongGravityRange);
-            gravityMultiplier = 1.0 + (rangeFactor * 0.8); // Up to 1.8x stronger at medium range
+        // Apply minimum distance to prevent extreme forces when very close
+        const minDistance = this.planet.radius + 10; // Just above surface
+        const effectiveDistance = Math.max(distance, minDistance);
+        
+        // F = G * m1 * m2 / r^2
+        // But we need acceleration, so a = F / m_rocket = G * m_planet / r^2
+        const gravityMagnitude = (G * scaledPlanetMass) / (effectiveDistance * effectiveDistance);
+        
+        // Apply the gravity in the correct direction
+        const gravityAcceleration = direction.multiplyScalar(gravityMagnitude);
+        
+        // Check if rocket is on or very close to surface
+        const surfaceDistance = distance - this.planet.radius;
+        const isOnSurface = surfaceDistance <= 5; // Within 5 units of surface
+        
+        // If on surface, only apply gravity if rocket is moving upward (jumping/taking off)
+        if (isOnSurface) {
+            const velocityTowardPlanet = this.rocket.velocity.clone().dot(direction);
+            if (velocityTowardPlanet <= 0) {
+                // Rocket is on surface and not moving toward planet - no gravity
+                return new THREE.Vector3(0, 0, 0);
+            }
+        }
+        
+        // Debug logging to find sweet spot
+        if (Math.random() < 0.02) { // Log occasionally
+            console.log('Gravity Debug:', {
+                altitude: Math.floor(altitude),
+                distance: Math.floor(distance),
+                surfaceDistance: Math.floor(surfaceDistance),
+                isOnSurface: isOnSurface,
+                gravityMagnitude: gravityMagnitude.toFixed(3)
+            });
         }
         
         // Apply altitude-based atmospheric drag effect
-        if (altitude < 300) { // Within atmosphere - more reasonable range
+        if (altitude < 300) { // Within atmosphere
             const atmosphericDrag = this.calculateAtmosphericDrag(altitude);
             const dragForce = this.rocket.velocity.clone().multiplyScalar(-atmosphericDrag);
-            baseGravity.add(dragForce);
+            gravityAcceleration.add(dragForce);
         }
         
-        // Apply the enhanced gravity
-        return baseGravity.multiplyScalar(gravityMultiplier);
+        return gravityAcceleration;
     }
     
     calculateAtmosphericDrag(altitude) {
@@ -408,6 +433,19 @@ export class PlanetScene {
         // Update rocket with atmospheric effects (scaled for larger planets)
         const altitude = this.planet.getAltitude(this.rocket.mesh.position);
         const nearPlanet = altitude < 300; // Atmospheric effects range
+        
+        // Show when gravity is actually applied
+        if (gravity.length() > 0.1 && Math.random() < 0.02) {
+            console.log('Gravity applied:', {
+                magnitude: gravity.length().toFixed(2),
+                direction: {
+                    x: gravity.x.toFixed(2),
+                    y: gravity.y.toFixed(2),
+                    z: gravity.z.toFixed(2)
+                },
+                altitude: Math.floor(altitude)
+            });
+        }
         
         this.rocket.update(deltaTime, gravity, nearPlanet, '3d');
         this.planet.update(deltaTime);
